@@ -9,13 +9,15 @@ import {
   Check,
   ExternalLink,
   RefreshCw,
-  Wifi,
   Radio,
   X,
   CheckCircle2,
-  Smartphone
+  Smartphone,
+  LogOut,
+  Cloud
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { User } from 'firebase/auth';
 import { ConnectionStatus } from '../services/orderSync';
 import { PresenceSummary } from '../types/restaurant';
 import { setSoundEnabled, isSoundEnabled, playKitchenOrderBell } from '../services/soundEffects';
@@ -29,13 +31,9 @@ interface HeaderProps {
   activeOrdersCount: number;
   readyOrdersCount: number;
   onResetDemo: () => void;
-}
-
-interface NetworkInfo {
-  localIps: string[];
-  port: number;
-  localUrls: string[];
-  hostname: string;
+  currentUser: User | null;
+  onSignOut: () => void;
+  onOpenRoleSelector: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -47,13 +45,15 @@ export const Header: React.FC<HeaderProps> = ({
   activeOrdersCount,
   readyOrdersCount,
   onResetDemo,
+  currentUser,
+  onSignOut,
+  onOpenRoleSelector,
 }) => {
   const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
   const [showShareModal, setShowShareModal] = useState(false);
-  const [copiedLink, setCopiedLink] = useState<'server' | 'kitchen' | 'local' | 'cloud' | null>(null);
+  const [copiedLink, setCopiedLink] = useState<'server' | 'kitchen' | 'cloud' | null>(null);
 
-  // Network info & QR codes
-  const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
+  // QR codes
   const [qrRole, setQrRole] = useState<'server' | 'kitchen'>('server');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
@@ -66,30 +66,10 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  // Fetch local network info on mount or modal open
-  useEffect(() => {
-    fetch('/api/network-info')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.success) {
-          setNetworkInfo(data);
-        }
-      })
-      .catch(() => {
-        // Fallback gracefully
-      });
-  }, [showShareModal]);
-
-  // Generate QR code whenever the selected target role or host changes
+  // Generate QR code for mobile connection
   useEffect(() => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    // Prefer current browser origin, or local WiFi IP if on localhost
-    let targetUrl = `${origin}?role=${qrRole}`;
-    
-    // If running on localhost and we know a local LAN IP, we can generate local WiFi link
-    if (origin.includes('localhost') && networkInfo?.localUrls?.[0]) {
-      targetUrl = `${networkInfo.localUrls[0]}?role=${qrRole}`;
-    }
+    const targetUrl = `${origin}?role=${qrRole}`;
 
     QRCode.toDataURL(targetUrl, {
       width: 220,
@@ -101,20 +81,16 @@ export const Header: React.FC<HeaderProps> = ({
     })
       .then((url) => setQrDataUrl(url))
       .catch((err) => console.error('Failed to generate QR code:', err));
-  }, [qrRole, networkInfo]);
+  }, [qrRole]);
 
-  const getFullUrl = (roleParam: 'server' | 'kitchen', forceLocal = false) => {
+  const getFullUrl = (roleParam: 'server' | 'kitchen') => {
     if (typeof window === 'undefined') return '';
-    let base = window.location.origin;
-    if (forceLocal && networkInfo?.localUrls?.[0]) {
-      base = networkInfo.localUrls[0];
-    }
-    const url = new URL(base);
+    const url = new URL(window.location.origin);
     url.searchParams.set('role', roleParam);
     return url.toString();
   };
 
-  const copyToClipboard = (type: 'server' | 'kitchen' | 'local' | 'cloud', url: string) => {
+  const copyToClipboard = (type: 'server' | 'kitchen' | 'cloud', url: string) => {
     navigator.clipboard.writeText(url);
     setCopiedLink(type);
     setTimeout(() => setCopiedLink(null), 2000);
@@ -140,8 +116,9 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="font-['Cinzel'] tracking-widest text-base sm:text-lg font-bold text-amber-100 block leading-tight">
                   MOONSHINE
                 </span>
-                <span className="text-[10px] text-stone-400 font-medium hidden sm:block">
-                  Order & Kitchen System
+                <span className="text-[10px] text-stone-400 font-medium hidden sm:flex items-center gap-1">
+                  <Cloud className="w-3 h-3 text-emerald-400 inline" />
+                  <span>Cloud Order & Kitchen System</span>
                 </span>
               </div>
             </div>
@@ -186,27 +163,27 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Controls & Connection */}
             <div className="flex items-center gap-1.5 sm:gap-2">
               
-              {/* REAL-TIME DEVICE SYNC STATUS BADGE */}
+              {/* REAL-TIME CLOUD SYNC STATUS BADGE */}
               {connectionStatus === 'connected' ? (
                 isMultiDeviceSynced ? (
                   <div
                     onClick={() => setShowShareModal(true)}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono font-bold border bg-emerald-950/80 text-emerald-300 border-emerald-600/80 cursor-pointer shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:bg-emerald-900/60 transition"
-                    title="Kitchen and Server devices connected and synced in real-time"
+                    title="All devices synced live via Firebase Cloud"
                   >
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
                     <span>
-                      Synced ({presenceSummary?.kitchensCount}K + {presenceSummary?.serversCount}S)
+                      Cloud Synced ({presenceSummary?.kitchensCount}K + {presenceSummary?.serversCount}S)
                     </span>
                   </div>
                 ) : (
                   <div
                     onClick={() => setShowShareModal(true)}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono border bg-amber-950/60 text-amber-300 border-amber-600/60 cursor-pointer hover:bg-amber-900/50 transition"
-                    title="1 Device online. Tap to connect 2nd device (Kitchen or Server phone)"
+                    title="1 Staff active. Tap to connect 2nd device (Kitchen or Server phone)"
                   >
                     <span className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span>{activeDevicesCount} Online · Connect 2nd</span>
+                    <span>{activeDevicesCount} Online · Add Staff</span>
                   </div>
                 )
               ) : (
@@ -215,7 +192,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono border bg-stone-900 text-stone-400 border-stone-700 cursor-pointer"
                 >
                   <span className="w-2 h-2 rounded-full bg-stone-500 animate-ping" />
-                  <span>Reconnecting</span>
+                  <span>Connecting Cloud</span>
                 </div>
               )}
 
@@ -232,7 +209,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {soundOn ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
               </button>
 
-              {/* Share / Multi-device modal opener */}
+              {/* Share / Multi-device QR opener */}
               <button
                 onClick={() => setShowShareModal(true)}
                 className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
@@ -241,6 +218,40 @@ export const Header: React.FC<HeaderProps> = ({
                 <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
                 <span className="hidden md:inline">Connect Devices</span>
               </button>
+
+              {/* Staff Profile & Logout */}
+              {currentUser && (
+                <div className="flex items-center gap-1.5 pl-1 border-l border-stone-800">
+                  <button
+                    onClick={onOpenRoleSelector}
+                    className="flex items-center gap-1.5 p-1 rounded-lg hover:bg-stone-800/80 transition"
+                    title={`Logged in as ${currentUser.email}. Click to change role.`}
+                  >
+                    {currentUser.photoURL ? (
+                      <img
+                        src={currentUser.photoURL}
+                        alt=""
+                        className="w-6 h-6 rounded-full border border-amber-500/40 object-cover"
+                      />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center text-[11px]">
+                        {(currentUser.displayName || currentUser.email || 'S')[0].toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-[11px] text-stone-300 max-w-[80px] sm:max-w-[110px] truncate hidden sm:block">
+                      {currentUser.displayName?.split(' ')[0] || 'Staff'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={onSignOut}
+                    className="p-1 text-stone-400 hover:text-rose-400 rounded-lg hover:bg-stone-800 transition"
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -283,7 +294,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </header>
 
-      {/* MULTI-DEVICE & LOCAL NETWORK HUB MODAL */}
+      {/* MULTI-DEVICE & CLOUD HUB MODAL */}
       {showShareModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
           <div className="bg-[#181A22] border border-stone-700 rounded-3xl max-w-lg w-full p-5 sm:p-6 text-stone-100 shadow-2xl relative max-h-[92vh] overflow-y-auto">
@@ -296,10 +307,10 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-amber-100 font-serif">
-                    Live Device Connection Hub
+                    Firebase Cloud Connection Hub
                   </h3>
                   <p className="text-xs text-stone-400">
-                    Connect kitchen screen + multiple server phones
+                    Works on any WiFi or mobile network worldwide via Google login
                   </p>
                 </div>
               </div>
@@ -311,15 +322,16 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
 
-            {/* Currently Active Devices List */}
+            {/* Currently Active Staff List */}
             <div className="mb-4 p-3.5 rounded-2xl bg-stone-900 border border-stone-800">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-stone-300 uppercase tracking-wider flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  Live Devices on Network ({activeDevicesCount})
+                  Live Staff Online ({activeDevicesCount})
                 </span>
-                <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
-                  Auto-Synced
+                <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800 flex items-center gap-1">
+                  <Cloud className="w-3 h-3" />
+                  <span>Cloud Synced</span>
                 </span>
               </div>
 
@@ -343,14 +355,14 @@ export const Header: React.FC<HeaderProps> = ({
                       </div>
                       <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        <span>Active</span>
+                        <span>Online</span>
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="text-xs text-stone-400 py-1">
-                  1 device currently open on this screen.
+                  1 device currently active on this screen.
                 </p>
               )}
             </div>
@@ -403,22 +415,17 @@ export const Header: React.FC<HeaderProps> = ({
               )}
 
               <p className="text-[11px] text-stone-400 max-w-xs">
-                Open phone camera & point at this QR. It opens directly to{' '}
-                <strong className="text-amber-300">
-                  {qrRole === 'server' ? 'Server Punch' : 'Kitchen Screen'}
-                </strong>
-                .
+                Staff member scans this QR on their mobile, logs in with their Gmail, and selects their role. Instant real-time cloud sync!
               </p>
             </div>
 
-            {/* Direct Links for Local WiFi & Cloud */}
+            {/* Direct Links */}
             <div className="space-y-2.5 mb-4">
-              
               {/* Option 1: Waiter Direct Link */}
               <div className="p-3 rounded-xl bg-stone-900 border border-stone-800 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <span className="text-xs font-bold text-stone-200 block">
-                    Server Direct Link (Waiter Mobile)
+                    Server Direct Link (Waiter Phone)
                   </span>
                   <p className="text-[11px] font-mono text-stone-500 truncate max-w-[220px] sm:max-w-xs">
                     {getFullUrl('server')}
@@ -481,32 +488,6 @@ export const Header: React.FC<HeaderProps> = ({
                   </a>
                 </div>
               </div>
-
-              {/* Option 3: Local Network IP if available */}
-              {networkInfo?.localUrls?.[0] && (
-                <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-600/40 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="text-xs font-bold text-amber-200 flex items-center gap-1">
-                      <Wifi className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Local Restaurant WiFi IP</span>
-                    </span>
-                    <p className="text-[11px] font-mono text-amber-300/80 truncate max-w-[220px] sm:max-w-xs">
-                      {networkInfo.localUrls[0]}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard('local', networkInfo.localUrls[0])}
-                    className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1 transition shrink-0"
-                  >
-                    {copiedLink === 'local' ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-300" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
-                    <span>Copy IP</span>
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* Clear All Orders Demo Reset */}
@@ -517,7 +498,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onResetDemo();
                   setShowShareModal(false);
                 }}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-rose-950/70 border border-stone-800 hover:border-rose-600/50 text-stone-300 hover:text-rose-300 font-bold transition"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-rose-950/70 border border-stone-800 hover:border-rose-600/50 text-stone-300 hover:text-rose-300 font-bold transition cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Clear All Active Tickets</span>

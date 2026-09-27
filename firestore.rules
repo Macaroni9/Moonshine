@@ -1,0 +1,66 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net (Pillar 1 / Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Staff Users Collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() 
+        && request.auth.uid == userId
+        && incoming().uid == userId
+        && incoming().role in ['server', 'kitchen', 'manager'];
+      allow delete: if false;
+    }
+
+    // Live Restaurant Order Tickets Collection
+    match /orders/{orderId} {
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn()
+        && isValidId(orderId)
+        && incoming().orderNumber is number
+        && incoming().orderNumber > 0
+        && incoming().tableNumber is string
+        && incoming().tableNumber.size() > 0
+        && incoming().tableNumber.size() <= 50
+        && incoming().status in ['PENDING', 'PREPARING', 'READY', 'SERVED', 'CANCELLED'];
+
+      allow update: if isSignedIn()
+        && isValidId(orderId)
+        && incoming().status in ['PENDING', 'PREPARING', 'READY', 'SERVED', 'CANCELLED'];
+
+      allow delete: if isSignedIn();
+    }
+
+    // Live Device Presence Beacons (for active phones and kitchen monitors)
+    match /presence/{deviceId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() 
+        && isValidId(deviceId)
+        && incoming().uid == request.auth.uid
+        && incoming().role in ['server', 'kitchen'];
+    }
+  }
+}

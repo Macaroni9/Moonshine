@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, logoutStaff } from './services/firebase';
 import { useOrderSync } from './services/orderSync';
 import { Header } from './components/Header';
 import { ServerFloorView } from './components/ServerFloorView';
 import { KitchenDisplayView } from './components/KitchenDisplayView';
-import { Bell, CheckCircle2, X } from 'lucide-react';
+import { StaffAuthScreen } from './components/StaffAuthScreen';
+import { Bell, CheckCircle2, X, Loader2 } from 'lucide-react';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showRoleSelector, setShowRoleSelector] = useState(false);
+
   // Read role from URL query param if present (?role=kitchen or ?role=server)
   const [role, setRole] = useState<'server' | 'kitchen'>(() => {
     if (typeof window !== 'undefined') {
@@ -16,11 +23,20 @@ export default function App() {
       }
       const stored = localStorage.getItem('moonshine_role');
       if (stored === 'kitchen' || stored === 'server') {
-        return stored;
+        return stored as 'server' | 'kitchen';
       }
     }
     return 'server';
   });
+
+  // Track Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleRoleChange = (newRole: 'server' | 'kitchen') => {
     setRole(newRole);
@@ -30,8 +46,12 @@ export default function App() {
       url.searchParams.set('role', newRole);
       window.history.replaceState({}, '', url.toString());
     } catch {
-      // Ignore URL/storage issues
+      // Ignore URL/storage errors
     }
+  };
+
+  const handleSignOut = async () => {
+    await logoutStaff();
   };
 
   const {
@@ -45,10 +65,36 @@ export default function App() {
     updateOrderStatus,
     updateItemStatus,
     resetOrders,
-  } = useOrderSync(role);
+  } = useOrderSync(role, currentUser);
 
   const activeOrdersCount = orders.filter((o) => o.status !== 'CANCELLED' && o.status !== 'SERVED').length;
   const readyOrdersCount = orders.filter((o) => o.status === 'READY').length;
+
+  // 1. Initial loading splash
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0C0E14] text-stone-100 flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 rounded-2xl bg-amber-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 animate-spin">
+          <Loader2 className="w-6 h-6" />
+        </div>
+        <p className="text-xs font-mono text-stone-400">Connecting Moonshine Cloud...</p>
+      </div>
+    );
+  }
+
+  // 2. If not authenticated or user opened role switcher
+  if (!currentUser || showRoleSelector) {
+    return (
+      <StaffAuthScreen
+        currentUser={currentUser}
+        currentRole={role}
+        onRoleSelected={(newRole) => {
+          handleRoleChange(newRole);
+          setShowRoleSelector(false);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0E1015] text-stone-100 flex flex-col font-sans selection:bg-amber-600 selection:text-white">
@@ -62,6 +108,9 @@ export default function App() {
         activeOrdersCount={activeOrdersCount}
         readyOrdersCount={readyOrdersCount}
         onResetDemo={() => resetOrders()}
+        currentUser={currentUser}
+        onSignOut={handleSignOut}
+        onOpenRoleSelector={() => setShowRoleSelector(true)}
       />
 
       {/* Real-time Global Banner / Alert Notification */}
