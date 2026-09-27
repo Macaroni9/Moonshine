@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import http from 'http';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
@@ -41,14 +42,76 @@ interface OrderTicket {
   servedAt?: string;
 }
 
+interface ConnectedDevice {
+  deviceId: string;
+  role: 'server' | 'kitchen';
+  deviceName: string;
+  lastSeen: number;
+  ip?: string;
+  transport?: 'ws' | 'http';
+}
+
+function getLocalNetworkAddresses(): string[] {
+  const interfaces = os.networkInterfaces();
+  const addresses: string[] = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const net of interfaces[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        addresses.push(net.address);
+      }
+    }
+  }
+  return addresses;
+}
+
 let nextOrderSeq = 101;
 
 // Clean slate: no confusing dummy/sample orders by default
 let orders: OrderTicket[] = [];
 
+// Registry of devices seen active in last 8 seconds
+const activeDevices = new Map<string, ConnectedDevice>();
+
+function getActiveDevicesSummary() {
+  const now = Date.now();
+  // Purge any device inactive for > 8 seconds
+  for (const [id, dev] of activeDevices.entries()) {
+    if (now - dev.lastSeen > 8000) {
+      activeDevices.delete(id);
+    }
+  }
+
+  const list = Array.from(activeDevices.values());
+  const servers = list.filter((d) => d.role === 'server');
+  const kitchens = list.filter((d) => d.role === 'kitchen');
+
+  return {
+    total: list.length,
+    serversCount: servers.length,
+    kitchensCount: kitchens.length,
+    devices: list.map((d) => ({
+      id: d.deviceId,
+      role: d.role,
+      name: d.deviceName,
+      lastSeenSecondsAgo: Math.max(0, Math.round((now - d.lastSeen) / 1000)),
+    })),
+  };
+}
+
 async function startServer() {
   const app = express();
   const server = http.createServer(app);
+
+  // Permissive CORS for multiple devices across local WiFi
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
 
   app.use(express.json());
 
@@ -68,32 +131,28 @@ async function startServer() {
     });
   }
 
-  function broadcastClientCount() {
-    const count = Array.from(wss.clients).filter((c) => c.readyState === WebSocket.OPEN).length;
+  function broadcastPresence() {
     broadcast({
-      type: 'CLIENTS_UPDATED',
-      clientCount: count,
+      type: 'PRESENCE_UPDATED',
+      presence: getActiveDevicesSummary(),
     });
   }
 
   wss.on('connection', (ws: WebSocket) => {
-    // Current open clients count including this one
     const count = Array.from(wss.clients).filter((c) => c.readyState === WebSocket.OPEN).length;
 
-    // Send full current orders & connected devices count on connect
+    // Send full current orders & presence on connect
     const initMessage = {
       type: 'INIT',
       orders,
       serverTime: new Date().toISOString(),
       clientCount: count,
+      presence: getActiveDevicesSummary(),
     };
     ws.send(JSON.stringify(initMessage));
 
-    // Notify all connected devices that a new peer connected
-    broadcastClientCount();
-
     ws.on('close', () => {
-      broadcastClientCount();
+      broadcastPresence();
     });
 
     ws.on('message', (messageRaw: string) => {
@@ -101,6 +160,21 @@ async function startServer() {
         const msg = JSON.parse(messageRaw.toString());
         if (msg.type === 'PING') {
           ws.send(JSON.stringify({ type: 'PONG' }));
+          return;
+        }
+
+        if (msg.type === 'HEARTBEAT' && msg.payload) {
+          const { deviceId, role, deviceName } = msg.payload;
+          if (deviceId) {
+            activeDevices.set(deviceId, {
+              deviceId,
+              role: role || 'server',
+              deviceName: deviceName || 'Device',
+              lastSeen: Date.now(),
+              transport: 'ws',
+            });
+            broadcastPresence();
+          }
           return;
         }
 
@@ -231,6 +305,42 @@ async function startServer() {
       success: true,
       orders,
       serverTime: new Date().toISOString(),
+      presence: getActiveDevicesSummary(),
+    });
+  });
+
+  // Real-time device heartbeat (Works across local network & cloud without WS dependency)
+  app.post('/api/presence/heartbeat', (req: Request, res: Response) => {
+    const { deviceId, role, deviceName } = req.body || {};
+    if (deviceId) {
+      activeDevices.set(deviceId, {
+        deviceId,
+        role: role || 'server',
+        deviceName: deviceName || (role === 'kitchen' ? 'Kitchen Display' : 'Server Phone'),
+        lastSeen: Date.now(),
+        ip: req.ip || req.socket.remoteAddress,
+        transport: 'http',
+      });
+      broadcastPresence();
+    }
+
+    res.json({
+      success: true,
+      presence: getActiveDevicesSummary(),
+      orders,
+      serverTime: new Date().toISOString(),
+    });
+  });
+
+  // Local Network discovery info for connecting multiple servers & kitchen on same WiFi
+  app.get('/api/network-info', (_req: Request, res: Response) => {
+    const ips = getLocalNetworkAddresses();
+    res.json({
+      success: true,
+      port: PORT,
+      hostname: os.hostname(),
+      localIps: ips,
+      localUrls: ips.map((ip) => `http://${ip}:${PORT}`),
     });
   });
 

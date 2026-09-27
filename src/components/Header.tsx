@@ -1,6 +1,23 @@
-import React, { useState } from 'react';
-import { Volume2, VolumeX, QrCode, Smartphone, ChefHat, Receipt, Copy, Check, ExternalLink, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  Volume2,
+  VolumeX,
+  QrCode,
+  ChefHat,
+  Receipt,
+  Copy,
+  Check,
+  ExternalLink,
+  RefreshCw,
+  Wifi,
+  Radio,
+  X,
+  CheckCircle2,
+  Smartphone
+} from 'lucide-react';
+import QRCode from 'qrcode';
 import { ConnectionStatus } from '../services/orderSync';
+import { PresenceSummary } from '../types/restaurant';
 import { setSoundEnabled, isSoundEnabled, playKitchenOrderBell } from '../services/soundEffects';
 
 interface HeaderProps {
@@ -8,9 +25,17 @@ interface HeaderProps {
   onRoleChange: (role: 'server' | 'kitchen') => void;
   connectionStatus: ConnectionStatus;
   activeDevicesCount: number;
+  presenceSummary?: PresenceSummary;
   activeOrdersCount: number;
   readyOrdersCount: number;
   onResetDemo: () => void;
+}
+
+interface NetworkInfo {
+  localIps: string[];
+  port: number;
+  localUrls: string[];
+  hostname: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,13 +43,19 @@ export const Header: React.FC<HeaderProps> = ({
   onRoleChange,
   connectionStatus,
   activeDevicesCount,
+  presenceSummary,
   activeOrdersCount,
   readyOrdersCount,
   onResetDemo,
 }) => {
   const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
   const [showShareModal, setShowShareModal] = useState(false);
-  const [copiedLink, setCopiedLink] = useState<'all' | 'server' | 'kitchen' | null>(null);
+  const [copiedLink, setCopiedLink] = useState<'server' | 'kitchen' | 'local' | 'cloud' | null>(null);
+
+  // Network info & QR codes
+  const [networkInfo, setNetworkInfo] = useState<NetworkInfo | null>(null);
+  const [qrRole, setQrRole] = useState<'server' | 'kitchen'>('server');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
   const toggleSound = () => {
     const next = !soundOn;
@@ -35,23 +66,63 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const getFullUrl = (roleParam?: string) => {
-    if (typeof window === 'undefined') return '';
-    const url = new URL(window.location.href);
-    if (roleParam) {
-      url.searchParams.set('role', roleParam);
-    } else {
-      url.searchParams.delete('role');
+  // Fetch local network info on mount or modal open
+  useEffect(() => {
+    fetch('/api/network-info')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.success) {
+          setNetworkInfo(data);
+        }
+      })
+      .catch(() => {
+        // Fallback gracefully
+      });
+  }, [showShareModal]);
+
+  // Generate QR code whenever the selected target role or host changes
+  useEffect(() => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    // Prefer current browser origin, or local WiFi IP if on localhost
+    let targetUrl = `${origin}?role=${qrRole}`;
+    
+    // If running on localhost and we know a local LAN IP, we can generate local WiFi link
+    if (origin.includes('localhost') && networkInfo?.localUrls?.[0]) {
+      targetUrl = `${networkInfo.localUrls[0]}?role=${qrRole}`;
     }
+
+    QRCode.toDataURL(targetUrl, {
+      width: 220,
+      margin: 1,
+      color: {
+        dark: '#000000',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => setQrDataUrl(url))
+      .catch((err) => console.error('Failed to generate QR code:', err));
+  }, [qrRole, networkInfo]);
+
+  const getFullUrl = (roleParam: 'server' | 'kitchen', forceLocal = false) => {
+    if (typeof window === 'undefined') return '';
+    let base = window.location.origin;
+    if (forceLocal && networkInfo?.localUrls?.[0]) {
+      base = networkInfo.localUrls[0];
+    }
+    const url = new URL(base);
+    url.searchParams.set('role', roleParam);
     return url.toString();
   };
 
-  const copyToClipboard = (role?: 'server' | 'kitchen') => {
-    const url = getFullUrl(role);
+  const copyToClipboard = (type: 'server' | 'kitchen' | 'local' | 'cloud', url: string) => {
     navigator.clipboard.writeText(url);
-    setCopiedLink(role || 'all');
+    setCopiedLink(type);
     setTimeout(() => setCopiedLink(null), 2000);
   };
+
+  const hasKitchen = (presenceSummary?.kitchensCount ?? 0) > 0;
+  const hasServer = (presenceSummary?.serversCount ?? 0) > 0;
+  const isMultiDeviceSynced = hasKitchen && hasServer;
 
   return (
     <>
@@ -115,29 +186,36 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Controls & Connection */}
             <div className="flex items-center gap-1.5 sm:gap-2">
               
-              {/* Device Sync Status Badge */}
-              {connectionStatus !== 'connected' ? (
-                <div className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] sm:text-[11px] font-mono border bg-amber-950/60 text-amber-300 border-amber-800/60">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                  <span>Connecting</span>
-                </div>
-              ) : activeDevicesCount >= 2 ? (
-                <div
-                  className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] sm:text-[11px] font-mono border bg-emerald-950/70 text-emerald-300 border-emerald-700/70 cursor-pointer shadow-xs"
-                  title={`${activeDevicesCount} devices connected and synced in real-time`}
-                  onClick={() => setShowShareModal(true)}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
-                  <span className="font-bold">{activeDevicesCount} Synced</span>
-                </div>
+              {/* REAL-TIME DEVICE SYNC STATUS BADGE */}
+              {connectionStatus === 'connected' ? (
+                isMultiDeviceSynced ? (
+                  <div
+                    onClick={() => setShowShareModal(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono font-bold border bg-emerald-950/80 text-emerald-300 border-emerald-600/80 cursor-pointer shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:bg-emerald-900/60 transition"
+                    title="Kitchen and Server devices connected and synced in real-time"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
+                    <span>
+                      Synced ({presenceSummary?.kitchensCount}K + {presenceSummary?.serversCount}S)
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => setShowShareModal(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono border bg-amber-950/60 text-amber-300 border-amber-600/60 cursor-pointer hover:bg-amber-900/50 transition"
+                    title="1 Device online. Tap to connect 2nd device (Kitchen or Server phone)"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span>{activeDevicesCount} Online · Connect 2nd</span>
+                  </div>
+                )
               ) : (
                 <div
-                  className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] sm:text-[11px] font-mono border bg-stone-900 text-stone-300 border-stone-700/80 cursor-pointer hover:border-amber-600/60 transition"
-                  title="Only 1 device active. Tap to connect 2nd device"
                   onClick={() => setShowShareModal(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono border bg-stone-900 text-stone-400 border-stone-700 cursor-pointer"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  <span>1 Device</span>
+                  <span className="w-2 h-2 rounded-full bg-stone-500 animate-ping" />
+                  <span>Reconnecting</span>
                 </div>
               )}
 
@@ -157,11 +235,11 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Share / Multi-device modal opener */}
               <button
                 onClick={() => setShowShareModal(true)}
-                className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-medium transition flex items-center gap-1.5"
-                title="Connect 2nd device"
+                className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                title="Scan QR Code or copy link to connect kitchen and servers"
               >
-                <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span className="hidden md:inline">Connect 2nd Device</span>
+                <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                <span className="hidden md:inline">Connect Devices</span>
               </button>
             </div>
           </div>
@@ -205,127 +283,245 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </header>
 
-      {/* Share / Multi-Device Modal */}
+      {/* MULTI-DEVICE & LOCAL NETWORK HUB MODAL */}
       {showShareModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#1C1F26] border border-stone-700 rounded-2xl max-w-md w-full p-6 text-stone-100 shadow-2xl relative">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-amber-200 font-['Cinzel']">
-                  Multi-Device Setup
-                </h3>
-                <p className="text-xs text-stone-400 mt-0.5">
-                  Open this link on both your mobile phone & kitchen screen. Any order punched on the phone instantly arrives in the kitchen!
-                </p>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-[#181A22] border border-stone-700 rounded-3xl max-w-lg w-full p-5 sm:p-6 text-stone-100 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+            
+            {/* Header */}
+            <div className="flex justify-between items-start mb-4 pb-3 border-b border-stone-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Radio className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-amber-100 font-serif">
+                    Live Device Connection Hub
+                  </h3>
+                  <p className="text-xs text-stone-400">
+                    Connect kitchen screen + multiple server phones
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setShowShareModal(false)}
                 className="text-stone-400 hover:text-white p-1 rounded-lg hover:bg-stone-800"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              {/* Option 1: Server Phone */}
-              <div className="p-3.5 rounded-xl bg-stone-900/90 border border-stone-800 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-amber-600/20 text-amber-400 border border-amber-600/30">
-                    <Receipt className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-stone-200">1st Floor Server (Waiter Phone)</h4>
-                    <p className="text-xs text-stone-400">Punches food, comments & qty</p>
-                  </div>
+            {/* Currently Active Devices List */}
+            <div className="mb-4 p-3.5 rounded-2xl bg-stone-900 border border-stone-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-stone-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  Live Devices on Network ({activeDevicesCount})
+                </span>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
+                  Auto-Synced
+                </span>
+              </div>
+
+              {presenceSummary?.devices && presenceSummary.devices.length > 0 ? (
+                <div className="space-y-1.5">
+                  {presenceSummary.devices.map((dev) => (
+                    <div
+                      key={dev.id}
+                      className="flex items-center justify-between text-xs p-2 rounded-xl bg-stone-950/60 border border-stone-800/80"
+                    >
+                      <div className="flex items-center gap-2">
+                        {dev.role === 'kitchen' ? (
+                          <ChefHat className="w-4 h-4 text-blue-400" />
+                        ) : (
+                          <Smartphone className="w-4 h-4 text-amber-400" />
+                        )}
+                        <span className="font-semibold text-stone-200">{dev.name}</span>
+                        <span className="text-[10px] font-mono text-stone-500 uppercase">
+                          ({dev.role})
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        <span>Active</span>
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-1.5">
+              ) : (
+                <p className="text-xs text-stone-400 py-1">
+                  1 device currently open on this screen.
+                </p>
+              )}
+            </div>
+
+            {/* QR Code Scanner Section */}
+            <div className="mb-4 p-4 rounded-2xl bg-[#12141A] border border-amber-600/30 flex flex-col items-center text-center">
+              <span className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">
+                Scan with Phone Camera to Open:
+              </span>
+
+              {/* Role selector for QR Code */}
+              <div className="flex items-center bg-stone-900 p-1 rounded-xl border border-stone-800 text-xs mb-3">
+                <button
+                  onClick={() => setQrRole('server')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                    qrRole === 'server'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>Waiter Phone</span>
+                </button>
+                <button
+                  onClick={() => setQrRole('kitchen')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                    qrRole === 'kitchen'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  <ChefHat className="w-3.5 h-3.5" />
+                  <span>Kitchen Screen</span>
+                </button>
+              </div>
+
+              {/* Scannable QR Image */}
+              {qrDataUrl ? (
+                <div className="p-3 bg-white rounded-2xl shadow-xl border-4 border-amber-500/40 mb-2.5">
+                  <img
+                    src={qrDataUrl}
+                    alt="Scan to open on device"
+                    className="w-44 h-44 sm:w-48 sm:h-48 object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="w-48 h-48 bg-stone-900 rounded-2xl flex items-center justify-center text-stone-500 text-xs">
+                  Generating QR...
+                </div>
+              )}
+
+              <p className="text-[11px] text-stone-400 max-w-xs">
+                Open phone camera & point at this QR. It opens directly to{' '}
+                <strong className="text-amber-300">
+                  {qrRole === 'server' ? 'Server Punch' : 'Kitchen Screen'}
+                </strong>
+                .
+              </p>
+            </div>
+
+            {/* Direct Links for Local WiFi & Cloud */}
+            <div className="space-y-2.5 mb-4">
+              
+              {/* Option 1: Waiter Direct Link */}
+              <div className="p-3 rounded-xl bg-stone-900 border border-stone-800 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-stone-200 block">
+                    Server Direct Link (Waiter Mobile)
+                  </span>
+                  <p className="text-[11px] font-mono text-stone-500 truncate max-w-[220px] sm:max-w-xs">
+                    {getFullUrl('server')}
+                  </p>
+                </div>
+                <div className="flex gap-1 shrink-0">
                   <button
-                    onClick={() => copyToClipboard('server')}
-                    className="p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs flex items-center gap-1"
-                    title="Copy direct link"
+                    onClick={() => copyToClipboard('server', getFullUrl('server'))}
+                    className="px-2.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold flex items-center gap-1 transition"
                   >
-                    {copiedLink === 'server' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedLink === 'server' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>Copy</span>
                   </button>
                   <a
                     href={getFullUrl('server')}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs"
-                    title="Open in new tab"
+                    className="p-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs"
+                    title="Open in new window"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
               </div>
 
-              {/* Option 2: Kitchen Display */}
-              <div className="p-3.5 rounded-xl bg-stone-900/90 border border-stone-800 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-600/30">
-                    <ChefHat className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-stone-200">Kitchen Display System (KDS)</h4>
-                    <p className="text-xs text-stone-400">Incoming tickets, audio chimes & prep</p>
-                  </div>
+              {/* Option 2: Kitchen Direct Link */}
+              <div className="p-3 rounded-xl bg-stone-900 border border-stone-800 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-stone-200 block">
+                    Kitchen Display Direct Link
+                  </span>
+                  <p className="text-[11px] font-mono text-stone-500 truncate max-w-[220px] sm:max-w-xs">
+                    {getFullUrl('kitchen')}
+                  </p>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex gap-1 shrink-0">
                   <button
-                    onClick={() => copyToClipboard('kitchen')}
-                    className="p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs flex items-center gap-1"
-                    title="Copy direct link"
+                    onClick={() => copyToClipboard('kitchen', getFullUrl('kitchen'))}
+                    className="px-2.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold flex items-center gap-1 transition"
                   >
-                    {copiedLink === 'kitchen' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedLink === 'kitchen' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>Copy</span>
                   </button>
                   <a
                     href={getFullUrl('kitchen')}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs"
-                    title="Open in new tab"
+                    className="p-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs"
+                    title="Open in new window"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
               </div>
 
-              {/* QR Code generator placeholder using SVG for instant mobile scanning */}
-              <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 flex flex-col items-center justify-center text-center">
-                <p className="text-xs font-mono text-stone-400 mb-2 truncate max-w-full px-2">
-                  {typeof window !== 'undefined' ? window.location.href : ''}
-                </p>
-                <button
-                  onClick={() => copyToClipboard()}
-                  className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-2 shadow-md transition"
-                >
-                  {copiedLink === 'all' ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-300" />
-                      <span>Link Copied! Send via WhatsApp / AirDrop</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4" />
-                      <span>Copy Shared App Link</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Option 3: Local Network IP if available */}
+              {networkInfo?.localUrls?.[0] && (
+                <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-600/40 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-amber-200 flex items-center gap-1">
+                      <Wifi className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Local Restaurant WiFi IP</span>
+                    </span>
+                    <p className="text-[11px] font-mono text-amber-300/80 truncate max-w-[220px] sm:max-w-xs">
+                      {networkInfo.localUrls[0]}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard('local', networkInfo.localUrls[0])}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1 transition shrink-0"
+                  >
+                    {copiedLink === 'local' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-300" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    <span>Copy IP</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
-              {/* Quick Clear All Orders Button */}
-              <div className="pt-2 border-t border-stone-800 flex items-center justify-between text-xs text-stone-400">
-                <span>Need to clear all current active tickets?</span>
-                <button
-                  onClick={() => {
-                    onResetDemo();
-                    setShowShareModal(false);
-                  }}
-                  className="flex items-center gap-1 text-rose-400 hover:text-rose-300 font-medium"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Clear All Orders</span>
-                </button>
-              </div>
+            {/* Clear All Orders Demo Reset */}
+            <div className="pt-3 border-t border-stone-800 flex items-center justify-between text-xs text-stone-400">
+              <span>Start shift with clean ticket board:</span>
+              <button
+                onClick={() => {
+                  onResetDemo();
+                  setShowShareModal(false);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-stone-900 hover:bg-rose-950/70 border border-stone-800 hover:border-rose-600/50 text-stone-300 hover:text-rose-300 font-bold transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Clear All Active Tickets</span>
+              </button>
             </div>
           </div>
         </div>

@@ -38,16 +38,32 @@ export interface OrderTicket {
   servedAt?: string;
 }
 
+export interface PresenceDevice {
+  id: string;
+  role: 'server' | 'kitchen';
+  name: string;
+  lastSeenSecondsAgo: number;
+}
+
+export interface PresenceSummary {
+  total: number;
+  serversCount: number;
+  kitchensCount: number;
+  devices: PresenceDevice[];
+}
+
 export type WebSocketClientMessage =
   | { type: 'CREATE_ORDER'; payload: Omit<OrderTicket, 'orderNumber' | 'createdAt' | 'updatedAt' | 'status'> }
   | { type: 'CHANGE_STATUS'; payload: { orderId: string; status: OrderStatus } }
   | { type: 'CHANGE_ITEM_STATUS'; payload: { orderId: string; itemId: string; itemStatus: 'PENDING' | 'DONE' } }
+  | { type: 'HEARTBEAT'; payload: { deviceId: string; role: 'server' | 'kitchen'; deviceName: string } }
   | { type: 'PING' };
 
 export type WebSocketServerMessage =
-  | { type: 'INIT'; orders: OrderTicket[]; serverTime: string; clientCount: number }
+  | { type: 'INIT'; orders: OrderTicket[]; serverTime: string; clientCount: number; presence?: PresenceSummary }
   | { type: 'NEW_ORDER'; order: OrderTicket }
   | { type: 'ORDER_UPDATED'; order: OrderTicket }
   | { type: 'ORDER_DELETED'; orderId: string }
   | { type: 'CLIENTS_UPDATED'; clientCount: number }
+  | { type: 'PRESENCE_UPDATED'; presence: PresenceSummary }
   | { type: 'PONG' };

@@ -38,6 +38,7 @@ export default function App() {
     orders,
     connectionStatus,
     activeDevicesCount,
+    presenceSummary,
     lastNotification,
     dismissNotification,
     createOrder,
@@ -57,9 +58,10 @@ export default function App() {
         onRoleChange={handleRoleChange}
         connectionStatus={connectionStatus}
         activeDevicesCount={activeDevicesCount}
+        presenceSummary={presenceSummary}
         activeOrdersCount={activeOrdersCount}
         readyOrdersCount={readyOrdersCount}
-        onResetDemo={() => resetOrders('clear')}
+        onResetDemo={() => resetOrders()}
       />
 
       {/* Real-time Global Banner / Alert Notification */}
