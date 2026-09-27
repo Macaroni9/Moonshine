@@ -1,0 +1,6 @@
+{
+  "name": "Moonshine POS & Kitchen Display",
+  "description": "Real-time restaurant POS and Kitchen Display System (KDS) for Moonshine with synchronized multi-device order punching and live kitchen status updates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
