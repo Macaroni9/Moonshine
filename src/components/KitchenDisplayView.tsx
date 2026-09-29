@@ -381,19 +381,15 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                       </button>
                     )}
 
-                    {/* When Order is Ready: Mark Served (Bump from pass) */}
+                    {/* When Order is Ready: Food is at Pass, waiting for server to deliver to table */}
                     {order.status === 'READY' && (
                       <div className="space-y-1.5">
-                        <div className="text-center text-[11px] font-bold text-emerald-400 bg-emerald-950/60 py-1 rounded-lg border border-emerald-800/60">
-                          🛎️ Server Phone Notified & Vibrating
+                        <div className="text-center text-[11px] font-bold text-emerald-300 bg-emerald-950/80 py-2.5 px-3 rounded-xl border border-emerald-700/70 shadow-inner">
+                          <span className="block text-emerald-200">🛎️ Plated at Pass — Server iPad Alerted</span>
+                          <span className="block text-[10px] text-emerald-400/80 font-normal mt-0.5">
+                            Floor server will deliver {order.tableNumber} to table
+                          </span>
                         </div>
-                        <button
-                          onClick={() => onUpdateStatus(order.id, 'SERVED')}
-                          className="w-full py-2.5 px-3 rounded-xl bg-stone-700 hover:bg-stone-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition"
-                        >
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                          <span>Picked Up by Server (Clear)</span>
-                        </button>
                       </div>
                     )}
 

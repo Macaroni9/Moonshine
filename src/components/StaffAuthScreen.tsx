@@ -21,12 +21,14 @@ interface StaffAuthScreenProps {
   currentUser: User | null;
   currentRole: 'server' | 'kitchen';
   onRoleSelected: (role: 'server' | 'kitchen') => void;
+  onSignOut?: () => void;
 }
 
 export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
   currentUser,
   currentRole,
   onRoleSelected,
+  onSignOut,
 }) => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -253,12 +255,12 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
             </div>
 
             <div className="text-xs font-bold text-amber-300 uppercase tracking-wider">
-              Select Device Role for This Screen:
+              Select Device Role for This Shift:
             </div>
 
             {/* Role Options */}
             <div className="space-y-2.5">
-              {/* Option 1: Waiter Mobile Phone */}
+              {/* Option 1: Waiter Mobile Phone / iPad */}
               <div
                 onClick={() => setSelectedRole('server')}
                 className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
@@ -278,7 +280,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-stone-100 flex items-center gap-2">
-                    <span>Floor Server (Waiter Phone)</span>
+                    <span>Floor Server (Waiter iPad / Phone)</span>
                     {selectedRole === 'server' && (
                       <span className="text-[10px] px-2 py-0.5 rounded bg-amber-600 text-white font-bold">
                         Selected
@@ -286,24 +288,24 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
                     )}
                   </h4>
                   <p className="text-xs text-stone-400 mt-1 leading-relaxed">
-                    Punch table tickets, stage dishes, and receive phone vibration chimes when kitchen finishes dishes.
+                    Punch table tickets, stage dishes, and receive instant alert sounds + popup when kitchen places food at the pass.
                   </p>
                 </div>
               </div>
 
-              {/* Option 2: Kitchen Display System */}
+              {/* Option 2: Kitchen Display System (Android) */}
               <div
                 onClick={() => setSelectedRole('kitchen')}
                 className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3.5 ${
                   selectedRole === 'kitchen'
-                    ? 'bg-emerald-950/70 border-emerald-500 ring-2 ring-emerald-500/30 shadow-lg'
+                    ? 'bg-blue-950/70 border-blue-500 ring-2 ring-blue-500/30 shadow-lg'
                     : 'bg-stone-900/80 border-stone-800 hover:border-stone-700'
                 }`}
               >
                 <div
                   className={`p-2.5 rounded-xl shrink-0 ${
                     selectedRole === 'kitchen'
-                      ? 'bg-emerald-600 text-white'
+                      ? 'bg-blue-600 text-white'
                       : 'bg-stone-800 text-stone-400'
                   }`}
                 >
@@ -311,29 +313,44 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-stone-100 flex items-center gap-2">
-                    <span>Kitchen Display (Chef Screen)</span>
+                    <span>Kitchen Display (Chef Android Tablet)</span>
                     {selectedRole === 'kitchen' && (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 text-white font-bold">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-blue-600 text-white font-bold">
                         Selected
                       </span>
                     )}
                   </h4>
                   <p className="text-xs text-stone-400 mt-1 leading-relaxed">
-                    Live tickets queue, incoming sound bell, total items prep count, and one-tap "Order Ready for Pickup" button.
+                    Live ticket queue, loud metallic incoming order alarm bell, dish bump counts, and one-tap "ORDER READY FOR PICKUP" button.
                   </p>
                 </div>
               </div>
             </div>
 
+            <p className="text-[11px] text-stone-400 text-center italic">
+              🔒 Device will stay locked to this role. To change roles later, simply sign out and sign in again.
+            </p>
+
             {/* Launch App Button */}
             <button
               onClick={handleConfirmRole}
               disabled={loading}
-              className="w-full mt-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-xl active:scale-98 transition cursor-pointer"
+              className="w-full mt-1 py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-xl active:scale-98 transition cursor-pointer"
             >
-              <span>Launch {selectedRole === 'server' ? 'Server Screen' : 'Kitchen Screen'}</span>
+              <span>Launch {selectedRole === 'server' ? 'Floor Server Screen (iPad)' : 'Kitchen Display (Android)'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
+
+            {onSignOut && (
+              <div className="pt-2 text-center">
+                <button
+                  onClick={onSignOut}
+                  className="text-xs text-stone-400 hover:text-rose-300 underline transition cursor-pointer"
+                >
+                  Sign Out / Switch Google Account
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

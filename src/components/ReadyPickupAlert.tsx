@@ -16,25 +16,28 @@ export const ReadyPickupAlert: React.FC<ReadyPickupAlertProps> = ({
   onUpdateStatus,
   onOpenReadyTab,
 }) => {
+  // CRITICAL: Kitchen screen must NEVER see the hot food ready to pass banner or modal.
+  // Delivering food to tables is strictly the servers' responsibility on their iPad.
+  if (currentRole !== 'server') {
+    return null;
+  }
+
   // Track which order was most recently made ready to trigger the high-impact popup modal
   const [activeModalOrder, setActiveModalOrder] = useState<OrderTicket | null>(null);
   const [lastSeenReadyId, setLastSeenReadyId] = useState<string | null>(null);
 
-  // When a new ready order appears, automatically present the high-priority modal
+  // When a new ready order appears, automatically present the high-priority modal on the server screen
   useEffect(() => {
     if (readyOrders.length > 0) {
       const latestReady = readyOrders[0];
       if (latestReady && latestReady.id !== lastSeenReadyId) {
         setLastSeenReadyId(latestReady.id);
-        // Only auto-popup on Server screens (waiter iPad)
-        if (currentRole === 'server') {
-          setActiveModalOrder(latestReady);
-        }
+        setActiveModalOrder(latestReady);
       }
     } else {
       setActiveModalOrder(null);
     }
-  }, [readyOrders, currentRole, lastSeenReadyId]);
+  }, [readyOrders, lastSeenReadyId]);
 
   if (readyOrders.length === 0) return null;
 

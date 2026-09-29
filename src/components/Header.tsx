@@ -31,7 +31,6 @@ import {
 
 interface HeaderProps {
   currentRole: 'server' | 'kitchen';
-  onRoleChange: (role: 'server' | 'kitchen') => void;
   connectionStatus: ConnectionStatus;
   activeDevicesCount: number;
   presenceSummary?: PresenceSummary;
@@ -40,12 +39,10 @@ interface HeaderProps {
   onResetDemo: () => void;
   currentUser: User | null;
   onSignOut: () => void;
-  onOpenRoleSelector: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentRole,
-  onRoleChange,
   connectionStatus,
   activeDevicesCount,
   presenceSummary,
@@ -54,7 +51,6 @@ export const Header: React.FC<HeaderProps> = ({
   onResetDemo,
   currentUser,
   onSignOut,
-  onOpenRoleSelector,
 }) => {
   const [soundOn, setSoundOn] = useState(() => isSoundEnabled());
   const [showShareModal, setShowShareModal] = useState(false);
@@ -130,41 +126,31 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
-            {/* Desktop Navigation Switcher */}
-            <div className="hidden sm:flex items-center bg-stone-900/90 p-1 rounded-xl border border-stone-700/60 shadow-inner">
-              <button
-                onClick={() => onRoleChange('server')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  currentRole === 'server'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-stone-300 hover:text-white hover:bg-stone-800/80'
-                }`}
-              >
-                <Receipt className="w-3.5 h-3.5" />
-                <span>Server</span>
-                {readyOrdersCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.2 bg-emerald-500 text-white rounded-full text-[10px] animate-pulse font-bold">
-                    {readyOrdersCount} Ready!
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => onRoleChange('kitchen')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  currentRole === 'kitchen'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-stone-300 hover:text-white hover:bg-stone-800/80'
-                }`}
-              >
-                <ChefHat className="w-3.5 h-3.5" />
-                <span>Kitchen</span>
-                {activeOrdersCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.2 bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-full text-[10px] font-bold">
-                    {activeOrdersCount}
-                  </span>
-                )}
-              </button>
+            {/* Device Role Locked Display Badge (No switcher buttons) */}
+            <div className="flex items-center">
+              {currentRole === 'server' ? (
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl bg-amber-950/80 border border-amber-500/60 text-amber-200 text-xs font-bold font-mono shadow-inner">
+                  <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                  <span className="hidden sm:inline">Floor Server (iPad)</span>
+                  <span className="sm:hidden">Server</span>
+                  {readyOrdersCount > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 bg-emerald-500 text-stone-950 rounded-full text-[10px] animate-pulse font-black">
+                      {readyOrdersCount} Ready!
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl bg-blue-950/80 border border-blue-500/60 text-blue-200 text-xs font-bold font-mono shadow-inner">
+                  <ChefHat className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400" />
+                  <span className="hidden sm:inline">Kitchen Display (Android)</span>
+                  <span className="sm:hidden">Kitchen</span>
+                  {activeOrdersCount > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-full text-[10px] font-bold">
+                      {activeOrdersCount}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Controls & Connection */}
@@ -179,9 +165,10 @@ export const Header: React.FC<HeaderProps> = ({
                     title="All devices synced live via Firebase Cloud"
                   >
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-                    <span>
+                    <span className="hidden sm:inline">
                       Cloud Synced ({presenceSummary?.kitchensCount}K + {presenceSummary?.serversCount}S)
                     </span>
+                    <span className="sm:hidden">Cloud</span>
                   </div>
                 ) : (
                   <div
@@ -190,7 +177,7 @@ export const Header: React.FC<HeaderProps> = ({
                     title="1 Staff active. Tap to connect 2nd device (Kitchen or Server phone)"
                   >
                     <span className="w-2 h-2 rounded-full bg-amber-400" />
-                    <span>{activeDevicesCount} Online · Add Staff</span>
+                    <span>{activeDevicesCount} Online</span>
                   </div>
                 )
               ) : (
@@ -199,7 +186,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono border bg-stone-900 text-stone-400 border-stone-700 cursor-pointer"
                 >
                   <span className="w-2 h-2 rounded-full bg-stone-500 animate-ping" />
-                  <span>Connecting Cloud</span>
+                  <span>Connecting</span>
                 </div>
               )}
 
@@ -223,16 +210,15 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Scan QR Code or copy link to connect kitchen and servers"
               >
                 <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
-                <span className="hidden md:inline">Connect Devices</span>
+                <span className="hidden md:inline">Connect</span>
               </button>
 
-              {/* Staff Profile & Logout */}
+              {/* Staff Profile & Explicit Sign Out to Change Role */}
               {currentUser && (
                 <div className="flex items-center gap-1.5 pl-1 border-l border-stone-800">
-                  <button
-                    onClick={onOpenRoleSelector}
-                    className="flex items-center gap-1.5 p-1 rounded-lg hover:bg-stone-800/80 transition"
-                    title={`Logged in as ${currentUser.email}. Click to change role.`}
+                  <div
+                    className="flex items-center gap-1.5 p-1"
+                    title={`Logged in as ${currentUser.email}`}
                   >
                     {currentUser.photoURL ? (
                       <img
@@ -245,58 +231,22 @@ export const Header: React.FC<HeaderProps> = ({
                         {(currentUser.displayName || currentUser.email || 'S')[0].toUpperCase()}
                       </div>
                     )}
-                    <span className="text-[11px] text-stone-300 max-w-[80px] sm:max-w-[110px] truncate hidden sm:block">
+                    <span className="text-[11px] text-stone-300 max-w-[70px] sm:max-w-[100px] truncate hidden md:block">
                       {currentUser.displayName?.split(' ')[0] || 'Staff'}
                     </span>
-                  </button>
+                  </div>
 
                   <button
                     onClick={onSignOut}
-                    className="p-1 text-stone-400 hover:text-rose-400 rounded-lg hover:bg-stone-800 transition"
-                    title="Sign Out"
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-stone-900 hover:bg-rose-950/80 text-stone-300 hover:text-rose-200 border border-stone-800 hover:border-rose-700/60 text-xs font-bold transition cursor-pointer"
+                    title="Sign out to change device role or switch account"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
+                    <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                    <span className="text-[11px]">Sign Out</span>
                   </button>
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Mobile Bottom Segmented Switcher (Visible only on mobile) */}
-          <div className="sm:hidden mt-2 pt-1 border-t border-stone-800/80 flex items-center bg-stone-900/90 p-1 rounded-xl border border-stone-800">
-            <button
-              onClick={() => onRoleChange('server')}
-              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                currentRole === 'server'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-stone-400 hover:text-white'
-              }`}
-            >
-              <Receipt className="w-3.5 h-3.5" />
-              <span>Server</span>
-              {readyOrdersCount > 0 && (
-                <span className="px-1.5 py-0.2 bg-emerald-500 text-white rounded-full text-[9px] font-black animate-pulse">
-                  {readyOrdersCount} Ready
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => onRoleChange('kitchen')}
-              className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                currentRole === 'kitchen'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'text-stone-400 hover:text-white'
-              }`}
-            >
-              <ChefHat className="w-3.5 h-3.5" />
-              <span>Kitchen</span>
-              {activeOrdersCount > 0 && (
-                <span className="px-1.5 py-0.2 bg-amber-500/30 text-amber-300 rounded-full text-[9px] font-bold">
-                  {activeOrdersCount}
-                </span>
-              )}
-            </button>
           </div>
         </div>
       </header>

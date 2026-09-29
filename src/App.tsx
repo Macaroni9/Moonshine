@@ -12,22 +12,17 @@ import { Bell, CheckCircle2, X, Loader2 } from 'lucide-react';
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [showRoleSelector, setShowRoleSelector] = useState(false);
 
-  // Read role from URL query param if present (?role=kitchen or ?role=server)
-  const [role, setRole] = useState<'server' | 'kitchen'>(() => {
+  // Active role for this device session ('server' | 'kitchen').
+  // Retained in sessionStorage for page reloads, but cleared on sign out.
+  const [selectedRole, setSelectedRole] = useState<'server' | 'kitchen' | null>(() => {
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const r = params.get('role');
-      if (r === 'kitchen' || r === 'server') {
-        return r;
-      }
-      const stored = localStorage.getItem('moonshine_role');
+      const stored = sessionStorage.getItem('moonshine_session_role');
       if (stored === 'kitchen' || stored === 'server') {
-        return stored as 'server' | 'kitchen';
+        return stored;
       }
     }
-    return 'server';
+    return null;
   });
 
   // Track Firebase Auth state
@@ -39,21 +34,31 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleRoleChange = (newRole: 'server' | 'kitchen') => {
-    setRole(newRole);
+  const handleRoleSelected = (newRole: 'server' | 'kitchen') => {
+    setSelectedRole(newRole);
     try {
-      localStorage.setItem('moonshine_role', newRole);
-      const url = new URL(window.location.href);
-      url.searchParams.set('role', newRole);
-      window.history.replaceState({}, '', url.toString());
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('moonshine_session_role', newRole);
+      }
     } catch {
-      // Ignore URL/storage errors
+      // Ignore storage errors
     }
   };
 
   const handleSignOut = async () => {
-    await logoutStaff();
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('moonshine_session_role');
+        localStorage.removeItem('moonshine_role');
+      }
+      setSelectedRole(null);
+      await logoutStaff();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
   };
+
+  const activeRole: 'server' | 'kitchen' = selectedRole || 'server';
 
   const {
     orders,
@@ -66,7 +71,7 @@ export default function App() {
     updateOrderStatus,
     updateItemStatus,
     resetOrders,
-  } = useOrderSync(role, currentUser);
+  } = useOrderSync(activeRole, currentUser);
 
   const activeOrdersCount = orders.filter((o) => o.status !== 'CANCELLED' && o.status !== 'SERVED').length;
   const readyOrdersCount = orders.filter((o) => o.status === 'READY').length;
@@ -83,26 +88,24 @@ export default function App() {
     );
   }
 
-  // 2. If not authenticated or user opened role switcher
-  if (!currentUser || showRoleSelector) {
+  // 2. If not authenticated OR staff device has not picked a role yet:
+  // After signing in, ALWAYS ask the device to pick a role!
+  if (!currentUser || !selectedRole) {
     return (
       <StaffAuthScreen
         currentUser={currentUser}
-        currentRole={role}
-        onRoleSelected={(newRole) => {
-          handleRoleChange(newRole);
-          setShowRoleSelector(false);
-        }}
+        currentRole={selectedRole || 'server'}
+        onRoleSelected={handleRoleSelected}
+        onSignOut={currentUser ? handleSignOut : undefined}
       />
     );
   }
 
   return (
     <div className="min-h-screen bg-[#0E1015] text-stone-100 flex flex-col font-sans selection:bg-amber-600 selection:text-white">
-      {/* Top Header */}
+      {/* Top Header with Locked Role Indicator */}
       <Header
-        currentRole={role}
-        onRoleChange={handleRoleChange}
+        currentRole={selectedRole}
         connectionStatus={connectionStatus}
         activeDevicesCount={activeDevicesCount}
         presenceSummary={presenceSummary}
@@ -111,13 +114,12 @@ export default function App() {
         onResetDemo={() => resetOrders()}
         currentUser={currentUser}
         onSignOut={handleSignOut}
-        onOpenRoleSelector={() => setShowRoleSelector(true)}
       />
 
-      {/* Prominent High-Visibility Ready-for-Pickup Alert System (Loud alarms + unmissable banner & popup for iPad) */}
+      {/* Prominent High-Visibility Ready-for-Pickup Alert System (ONLY for Server iPad, NEVER kitchen) */}
       <ReadyPickupAlert
         readyOrders={orders.filter((o) => o.status === 'READY')}
-        currentRole={role}
+        currentRole={selectedRole}
         onUpdateStatus={updateOrderStatus}
       />
 
@@ -165,9 +167,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Role Views */}
+      {/* Main Screen: Renders ONLY the chosen role */}
       <main className="flex-1 flex flex-col">
-        {role === 'server' && (
+        {selectedRole === 'server' && (
           <ServerFloorView
             orders={orders}
             onCreateOrder={createOrder}
@@ -175,7 +177,7 @@ export default function App() {
           />
         )}
 
-        {role === 'kitchen' && (
+        {selectedRole === 'kitchen' && (
           <KitchenDisplayView
             orders={orders}
             onUpdateStatus={updateOrderStatus}
