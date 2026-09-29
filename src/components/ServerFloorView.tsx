@@ -11,11 +11,12 @@ import {
   X,
   ShoppingBag,
   ChevronDown,
-  Bell
+  Bell,
+  Volume2,
 } from 'lucide-react';
 import { MENU_ITEMS, RESTAURANT_INFO } from '../data/menu';
 import { MenuItem, OrderItem, OrderTicket, OrderStatus } from '../types/restaurant';
-import { playPunchSuccessSound } from '../services/soundEffects';
+import { playPunchSuccessSound, testAlertSound } from '../services/soundEffects';
 
 interface ServerFloorViewProps {
   orders: OrderTicket[];
@@ -214,19 +215,32 @@ export const ServerFloorView: React.FC<ServerFloorViewProps> = ({
 
           {/* Quick Table Carousel */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-            {RESTAURANT_INFO.tables.slice(0, 12).map((tbl) => (
-              <button
-                key={tbl}
-                onClick={() => setSelectedTable(tbl)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition border ${
-                  selectedTable === tbl
-                    ? 'bg-amber-600 text-white border-amber-500 shadow-xs'
-                    : 'bg-stone-900/80 text-stone-400 border-stone-800 hover:text-stone-200'
-                }`}
-              >
-                {tbl}
-              </button>
-            ))}
+            {RESTAURANT_INFO.tables.slice(0, 12).map((tbl) => {
+              const tableReadyOrders = readyOrders.filter((o) => o.tableNumber === tbl);
+              const isReady = tableReadyOrders.length > 0;
+
+              return (
+                <button
+                  key={tbl}
+                  onClick={() => setSelectedTable(tbl)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition border flex items-center gap-1 ${
+                    isReady
+                      ? 'bg-emerald-950 text-emerald-200 border-emerald-400 ring-2 ring-emerald-500/60 shadow-lg animate-pulse'
+                      : selectedTable === tbl
+                      ? 'bg-amber-600 text-white border-amber-500 shadow-xs'
+                      : 'bg-stone-900/80 text-stone-400 border-stone-800 hover:text-stone-200'
+                  }`}
+                >
+                  {isReady && <Bell className="w-3 h-3 text-emerald-400 animate-bounce" />}
+                  <span>{tbl}</span>
+                  {isReady && (
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500 text-stone-950 font-black">
+                      PASS
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
         </div>
@@ -235,6 +249,33 @@ export const ServerFloorView: React.FC<ServerFloorViewProps> = ({
       {/* Main Container */}
       <div className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-5 pt-3">
         
+        {/* HIGH-PRIORITY PROMPT FOR SERVERS: If dishes are ready at pass while on punch tab */}
+        {readyOrders.length > 0 && activeTab === 'punch' && (
+          <div
+            onClick={() => setActiveTab('ready')}
+            className="mb-3 p-3 bg-gradient-to-r from-emerald-950 via-emerald-900 to-emerald-950 border-2 border-emerald-400 rounded-2xl text-emerald-100 flex items-center justify-between shadow-xl cursor-pointer hover:border-emerald-300 transition animate-pulse"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500 text-stone-950 flex items-center justify-center font-bold">
+                <Bell className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-black text-emerald-200 uppercase tracking-wider">
+                  🛎️ {readyOrders.length} {readyOrders.length === 1 ? 'Order' : 'Orders'} Ready for Pickup at the Pass!
+                </p>
+                <p className="text-[11px] text-emerald-300/80">
+                  {readyOrders.map((o) => o.tableNumber).join(', ')} — Tap to deliver now
+                </p>
+              </div>
+            </div>
+
+            <span className="text-xs font-black px-3 py-1.5 rounded-xl bg-emerald-400 text-stone-950 flex items-center gap-1 shadow-md">
+              <span>View Pass</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+        )}
+
         {/* Simple success confirmation after sending order (NO prompt to check kitchen) */}
         {justPunchedInfo && (
           <div className="mb-3 p-3 bg-emerald-950/95 border border-emerald-500 rounded-xl text-emerald-100 flex items-center justify-between shadow-xl animate-in slide-in-from-top-2">
@@ -485,13 +526,24 @@ export const ServerFloorView: React.FC<ServerFloorViewProps> = ({
                 </p>
               </div>
 
-              <button
-                onClick={() => setActiveTab('punch')}
-                className="text-xs bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Punch Ticket</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => testAlertSound('ready')}
+                  className="text-xs bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-600/60 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition"
+                  title="Test iPad Alert Bell Sound"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span>Test Bell Sound</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('punch')}
+                  className="text-xs bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Punch Ticket</span>
+                </button>
+              </div>
             </div>
 
             {readyOrders.length === 0 ? (

@@ -6,6 +6,7 @@ import { Header } from './components/Header';
 import { ServerFloorView } from './components/ServerFloorView';
 import { KitchenDisplayView } from './components/KitchenDisplayView';
 import { StaffAuthScreen } from './components/StaffAuthScreen';
+import { ReadyPickupAlert } from './components/ReadyPickupAlert';
 import { Bell, CheckCircle2, X, Loader2 } from 'lucide-react';
 
 export default function App() {
@@ -111,6 +112,13 @@ export default function App() {
         currentUser={currentUser}
         onSignOut={handleSignOut}
         onOpenRoleSelector={() => setShowRoleSelector(true)}
+      />
+
+      {/* Prominent High-Visibility Ready-for-Pickup Alert System (Loud alarms + unmissable banner & popup for iPad) */}
+      <ReadyPickupAlert
+        readyOrders={orders.filter((o) => o.status === 'READY')}
+        currentRole={role}
+        onUpdateStatus={updateOrderStatus}
       />
 
       {/* Real-time Global Banner / Alert Notification */}

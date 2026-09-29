@@ -20,7 +20,14 @@ import QRCode from 'qrcode';
 import { User } from 'firebase/auth';
 import { ConnectionStatus } from '../services/orderSync';
 import { PresenceSummary } from '../types/restaurant';
-import { setSoundEnabled, isSoundEnabled, playKitchenOrderBell } from '../services/soundEffects';
+import {
+  setSoundEnabled,
+  isSoundEnabled,
+  playKitchenOrderBell,
+  playOrderReadyChime,
+  testAlertSound,
+  unlockAudio,
+} from '../services/soundEffects';
 
 interface HeaderProps {
   currentRole: 'server' | 'kitchen';
@@ -487,6 +494,38 @@ export const Header: React.FC<HeaderProps> = ({
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
+              </div>
+            </div>
+
+            {/* Device Audio & Alarm Test (Crucial for iPad and Android verification) */}
+            <div className="mb-4 p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Volume2 className="w-4 h-4 text-amber-400" />
+                  <span>Device Alarm & Speaker Test</span>
+                </span>
+                <span className="text-[10px] text-amber-300/80 font-mono">
+                  iPad & Android
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-300 mb-2.5 leading-relaxed">
+                Tap these buttons to unlock audio and verify your device speakers are loud enough for the dining room & kitchen:
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => testAlertSound('kitchen')}
+                  className="py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
+                >
+                  <ChefHat className="w-4 h-4" />
+                  <span>Test Kitchen Bell</span>
+                </button>
+                <button
+                  onClick={() => testAlertSound('ready')}
+                  className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
+                >
+                  <Receipt className="w-4 h-4" />
+                  <span>Test Pickup Alert</span>
+                </button>
               </div>
             </div>
 

@@ -6,9 +6,11 @@ import {
   Check,
   RotateCcw,
   Layers,
-  ChefHat
+  ChefHat,
+  Volume2,
 } from 'lucide-react';
 import { OrderTicket, OrderStatus } from '../types/restaurant';
+import { testAlertSound, unlockAudio } from '../services/soundEffects';
 
 interface KitchenDisplayViewProps {
   orders: OrderTicket[];
@@ -155,6 +157,16 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
               }`}
             >
               History ({completedOrders.length})
+            </button>
+
+            {/* Test speaker button for Android device */}
+            <button
+              onClick={() => testAlertSound('kitchen')}
+              className="px-2.5 py-1.5 rounded-lg font-bold text-amber-300 bg-amber-950/70 hover:bg-amber-900 border border-amber-600/50 whitespace-nowrap flex items-center gap-1 transition"
+              title="Test Android Kitchen Bell Volume"
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Test Bell</span>
             </button>
           </div>
         </div>

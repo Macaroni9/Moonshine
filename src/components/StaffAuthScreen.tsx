@@ -1,9 +1,21 @@
 import React, { useState } from 'react';
 import { User } from 'firebase/auth';
-import { ChefHat, Receipt, LogIn, CheckCircle2, Shield, ArrowRight } from 'lucide-react';
+import {
+  ChefHat,
+  Receipt,
+  CheckCircle2,
+  Shield,
+  ArrowRight,
+  AlertTriangle,
+  ExternalLink,
+  Copy,
+  Check,
+  RefreshCw,
+} from 'lucide-react';
 import { loginWithGoogle } from '../services/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 interface StaffAuthScreenProps {
   currentUser: User | null;
@@ -18,11 +30,18 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [selectedRole, setSelectedRole] = useState<'server' | 'kitchen'>(currentRole);
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const firebaseSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setErrorMsg(null);
+    setUnauthorizedDomain(null);
+
     try {
       const user = await loginWithGoogle();
       if (user) {
@@ -41,10 +60,27 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
         );
       }
     } catch (err: any) {
-      console.error('Google Sign-in failed:', err);
-      setErrorMsg(err?.message || 'Sign in was cancelled or failed.');
+      console.error('Google Sign-in error:', err);
+      const isUnauthorizedDomain =
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.message?.toLowerCase().includes('unauthorized domain') ||
+        err?.message?.toLowerCase().includes('unauthorized-domain');
+
+      if (isUnauthorizedDomain) {
+        setUnauthorizedDomain(currentHostname);
+      } else {
+        setErrorMsg(err?.message || 'Sign in was cancelled or failed.');
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCopyDomain = () => {
+    if (currentHostname) {
+      navigator.clipboard.writeText(currentHostname);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2000);
     }
   };
 
@@ -97,6 +133,50 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
           </div>
         </div>
 
+        {/* UNAUTHORIZED DOMAIN HELPER (Vercel Fix Guide) */}
+        {unauthorizedDomain && (
+          <div className="mb-5 p-4 rounded-2xl bg-amber-950/80 border border-amber-500/70 text-amber-100 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 mb-2 text-amber-300 font-bold text-sm">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <span>Authorize Domain in Firebase</span>
+            </div>
+            <p className="text-xs text-stone-300 leading-relaxed mb-3">
+              Firebase requires domains hosting the app (like your Vercel URL) to be added to the Google OAuth allowlist once:
+            </p>
+
+            {/* Domain Box + Copy button */}
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-stone-900 border border-amber-500/40 mb-3">
+              <span className="font-mono text-xs text-amber-200 truncate pr-2">
+                {currentHostname}
+              </span>
+              <button
+                onClick={handleCopyDomain}
+                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1 shrink-0 transition"
+              >
+                {copiedDomain ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedDomain ? 'Copied!' : 'Copy'}</span>
+              </button>
+            </div>
+
+            {/* Steps list */}
+            <div className="text-[11px] text-stone-300 space-y-1 mb-3 bg-black/30 p-2.5 rounded-xl">
+              <div><strong>1.</strong> Click button below to open Firebase Settings.</div>
+              <div><strong>2.</strong> Under <strong>Authorized domains</strong>, click <strong>Add domain</strong>.</div>
+              <div><strong>3.</strong> Paste <code className="text-amber-300">{currentHostname}</code> and click <strong>Save</strong>.</div>
+            </div>
+
+            <a
+              href={firebaseSettingsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs flex items-center justify-center gap-1.5 shadow transition"
+            >
+              <span>Open Firebase Console Settings</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        )}
+
         {errorMsg && (
           <div className="mb-4 p-3 rounded-xl bg-rose-950/80 border border-rose-600/70 text-rose-200 text-xs text-center">
             {errorMsg}
@@ -110,7 +190,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
               <Shield className="w-6 h-6 text-amber-400 mx-auto mb-2" />
               <h3 className="text-sm font-bold text-stone-200">Staff Authentication</h3>
               <p className="text-xs text-stone-400 mt-1 leading-relaxed">
-                Log in with your Gmail account. Once logged in, any phone, tablet, or kitchen display connects instantly across the cloud without WiFi issues.
+                Log in with your Google account. All servers and kitchen screens sync instantly across the cloud.
               </p>
             </div>
 
